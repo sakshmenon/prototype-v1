@@ -3,17 +3,12 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { listSemestersBetween, isSemesterPast, getSemesterStatus } from '../lib/semesters'
-import { fetchAuditSummary, type AuditSummary } from '../lib/audit'
 
 type ProfileSemesters = {
   freshman_semester: string | null
   graduation_semester: string | null
   major: string | null
 }
-
-const MIN_LEFT_PCT = 70
-const MAX_LEFT_PCT = 98
-const DEFAULT_LEFT_PCT = 90
 
 type ClassRow = {
   course_id: string  // Primary identifier (e.g. CS1100)
@@ -52,9 +47,6 @@ export default function Planning() {
   const [takenBySemester, setTakenBySemester] = useState<Record<string, CompletionRow[]>>({})
   const [searchOverlayOpen, setSearchOverlayOpen] = useState(false)
   const [addToSemesterClassId, setAddToSemesterClassId] = useState<string | null>(null)
-  const [leftWidthPct, setLeftWidthPct] = useState(DEFAULT_LEFT_PCT)
-  const [resizing, setResizing] = useState(false)
-  const [audit, setAudit] = useState<AuditSummary | null>(null)
 
   const YEAR_LABELS = ['Freshman', 'Sophomore', 'Pre-junior', 'Junior', 'Senior'] as const
   const TERM_ORDER = ['Fall', 'Spring', 'Summer'] as const
@@ -181,29 +173,6 @@ export default function Planning() {
     fetchTakenBySemester()
   }, [fetchTakenBySemester])
 
-  useEffect(() => {
-    if (!user?.id) return
-    const programCode = profile?.major?.trim() || 'CS'
-    fetchAuditSummary(user.id, programCode)
-      .then(setAudit)
-      .catch(() => setAudit(null))
-  }, [user?.id, profile?.major])
-
-  useEffect(() => {
-    if (!resizing) return
-    const onMove = (e: MouseEvent) => {
-      const pct = (e.clientX / window.innerWidth) * 100
-      setLeftWidthPct(Math.min(MAX_LEFT_PCT, Math.max(MIN_LEFT_PCT, pct)))
-    }
-    const onUp = () => setResizing(false)
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-  }, [resizing])
-
   async function addClassToSemester(courseCode: string, semesterLabel: string) {
     if (!user?.id) return
     const isPast = isSemesterPast(semesterLabel)
@@ -251,9 +220,8 @@ export default function Planning() {
           <Link to="/profile" className="btn btn-primary">Go to Profile</Link>
         </div>
       ) : (
-        <div className="planning-split-layout">
-          <div className="planning-left" style={{ width: `${leftWidthPct}%` }}>
-            <button
+        <>
+          <button
               type="button"
               className="planning-search-trigger"
               onClick={() => setSearchOverlayOpen(true)}
@@ -330,42 +298,7 @@ export default function Planning() {
             </div>
           ))}
             </div>
-          </div>
-          <div
-            className="planning-resizer"
-            onMouseDown={() => setResizing(true)}
-            role="separator"
-            aria-valuenow={leftWidthPct}
-            aria-valuemin={MIN_LEFT_PCT}
-            aria-valuemax={MAX_LEFT_PCT}
-            aria-label="Resize panels"
-          />
-          <div className="planning-right planning-right-requirements">
-            <h2 className="planning-requirements-title">Requirements</h2>
-            {!audit ? (
-              <p className="planning-requirements-muted text-muted">Loading requirements…</p>
-            ) : audit.totalRequirements === 0 ? (
-              <p className="planning-requirements-muted text-muted">No requirements for {profile?.major || 'CS'}.</p>
-            ) : (
-              <>
-                <div className="planning-requirements-summary">
-                  <span className="planning-requirements-count">{audit.remainingCount}</span>
-                  <span className="text-muted"> / {audit.totalRequirements} remaining</span>
-                </div>
-                {audit.remainingCourses.length > 0 && (
-                  <ul className="planning-requirements-list">
-                    {audit.remainingCourses.map((c) => (
-                      <li key={c} className="planning-requirements-item">{c}</li>
-                    ))}
-                  </ul>
-                )}
-                {audit.remainingGenEdSlots > 0 && (
-                  <p className="planning-requirements-gened text-muted">Gen Ed: {audit.remainingGenEdSlots} slot(s)</p>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+        </>
       )}
 
       {searchOverlayOpen && (

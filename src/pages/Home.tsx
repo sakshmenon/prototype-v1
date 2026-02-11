@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { getCurrentAcademicYearLabel, getCurrentAcademicYearSemesters, isSemesterPast } from '../lib/semesters'
 import { fetchAuditSummary, type AuditSummary } from '../lib/audit'
+import WelcomeBack from '../components/WelcomeBack'
 
 const CREDITS_TARGET_PER_YEAR = 30
 
@@ -55,9 +56,52 @@ export default function Home() {
   const [schedule, setSchedule] = useState<ScheduleRow[]>([])
   const [audit, setAudit] = useState<AuditSummary | null>(null)
   const [auditError, setAuditError] = useState<string | null>(null)
+  // Set to true to test the animation, false for production
+  const FORCE_SHOW_WELCOME = false
+  
+  const [showWelcome, setShowWelcome] = useState(FORCE_SHOW_WELCOME)
+  const [isReturningUser, setIsReturningUser] = useState(FORCE_SHOW_WELCOME)
 
   const yearLabel = getCurrentAcademicYearLabel()
   const yearSemesters = useMemo(() => getCurrentAcademicYearSemesters(), [])
+
+  // Show welcome animation for returning users (once per session)
+  useEffect(() => {
+    if (!user?.id || FORCE_SHOW_WELCOME) return
+    
+    // Check if welcome was already shown this session
+    const welcomeShownKey = `welcome_shown_${user.id}`
+    const alreadyShown = sessionStorage.getItem(welcomeShownKey)
+    
+    console.log('[Welcome] Checking...', { alreadyShown, userId: user.id })
+    
+    if (alreadyShown) {
+      console.log('[Welcome] Already shown this session, skipping')
+      return
+    }
+
+    // Check if user has ANY data (profile, completions, or schedule) - indicates returning user
+    Promise.all([
+      supabase.from('profiles').select('freshman_semester, graduation_semester').eq('user_id', user.id).maybeSingle(),
+      supabase.from('user_class_completions').select('user_id').eq('user_id', user.id).limit(1),
+      supabase.from('user_schedule').select('user_id').eq('user_id', user.id).limit(1)
+    ]).then(([profileRes, completionsRes, scheduleRes]) => {
+      const hasProfile = profileRes.data?.freshman_semester || profileRes.data?.graduation_semester
+      const hasCompletions = (completionsRes.data?.length ?? 0) > 0
+      const hasSchedule = (scheduleRes.data?.length ?? 0) > 0
+      
+      console.log('[Welcome] User data check:', { hasProfile, hasCompletions, hasSchedule })
+      
+      if (hasProfile || hasCompletions || hasSchedule) {
+        console.log('[Welcome] Returning user detected! Showing animation')
+        setIsReturningUser(true)
+        setShowWelcome(true)
+        sessionStorage.setItem(welcomeShownKey, 'true')
+      } else {
+        console.log('[Welcome] New user (no data), skipping animation')
+      }
+    })
+  }, [user?.id])
 
   useEffect(() => {
     if (!user?.id) return
@@ -110,9 +154,19 @@ export default function Home() {
     return schedule.filter((r) => r.semester_label && !isSemesterPast(r.semester_label)).length
   }, [schedule])
 
+  // Show welcome animation for returning users
+  if (showWelcome && isReturningUser) {
+    console.log('[Welcome] Rendering WelcomeBack component', { showWelcome, isReturningUser })
+    return <WelcomeBack onComplete={() => {
+      console.log('[Welcome] Animation complete, showing home page')
+      setShowWelcome(false)
+      setIsReturningUser(false)
+    }} />
+  }
+
   return (
     <div className="home">
-      <h1>Welcome, {name}</h1>
+      <h1>Welcome, Saksh</h1>
       <p className="text-muted">Your academic planning hub.</p>
 
       <div className="home-stats-grid">
